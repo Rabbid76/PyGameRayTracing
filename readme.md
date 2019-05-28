@@ -11,3 +11,5 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 ![intersect line and line](rendering/rendering_2.png)
 
 ![intersect line and line](rendering/capture_1.gif)
+
+![intersect line and line](rendering/rendering_3.png)

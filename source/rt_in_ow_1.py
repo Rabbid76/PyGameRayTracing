@@ -556,31 +556,40 @@ def random_scene():
     return list
 
 
-app = Application((600, 300), caption = "Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1) by Peter Shirley")
+app = Application((600, 300), caption = "Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1)")
     
 size = app.size
 image = pygame.Surface(size) 
 
-lookfrom = vec3(12, 2, 3)
-lookat = vec3(0, 0.5, 0.5)
-dist_to_focus = (lookat-lookfrom).magnitude()
-aperture = 0.1
-cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
-world = random_scene()
+create_random_scene = False
+if create_random_scene:
 
-"""
-world = hitable_list()
-world += [
-    sphere(vec3(0, 0, -1), 0.5,      lambertian(vec3(0.1, 0.2, 0.5))),
-    sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
-    sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
-    sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
-    sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
-] 
-"""
+    lookfrom = vec3(12, 2, 3)
+    lookat = vec3(0, 0.5, 0.5)
+    dist_to_focus = (lookat-lookfrom).magnitude()
+    aperture = 0.1
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+    world = random_scene()
+
+else:
+
+    lookfrom = vec3(3, 3, 2)
+    lookat = vec3(0, 0, -1)
+    dist_to_focus = (lookat-lookfrom).magnitude()
+    aperture = 0.5
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+
+    world = hitable_list()
+    world += [
+        sphere(vec3(0, 0, -1), 0.5,      lambertian(vec3(0.1, 0.2, 0.5))),
+        sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
+        sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
+        sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
+    ] 
 
 render = Rendering(world, cam)
-app.run(render, 10, 30)
+app.run(render, 10, 0)
     
     
     
