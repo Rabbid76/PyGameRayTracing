@@ -603,7 +603,7 @@ if create_random_scene:
     lookat = vec3(0, 0.5, 0.5)
     dist_to_focus = (lookat-lookfrom).magnitude()
     aperture = 0.0
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
     world = random_scene()
 
 else:
@@ -624,7 +624,7 @@ else:
     ] 
 
 render = Rendering(world, cam)
-app.run(render, 100, 0)
+app.run(render, 20, 0)
     
     
     
