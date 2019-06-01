@@ -4,12 +4,13 @@
 #
 # Based on:
 #  
-# "Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1)" by Peter Shirley
+# "Ray Tracing: the Next Week (Ray Tracing Minibooks Book 2)
 # ASIN: B01B5AODD8
 # [https://www.amazon.com/Ray-Tracing-Weekend-Minibooks-Book-ebook/dp/B01B5AODD8]
 
 
 import pygame
+import ctypes
 import math
 import random
 import threading 
@@ -20,6 +21,9 @@ currentWDir = os.getcwd()
 print( 'current working directory: {}'.format( str(currentWDir) ) )
 fileDir = os.path.dirname(os.path.abspath(__file__)) # det the directory of this file
 print( 'current location of self: {}'.format( str(fileDir) ) )
+parentDir = os.path.abspath(os.path.join(fileDir, os.pardir)) # get the parent directory of this file
+sys.path.insert(0, parentDir)
+print( 'insert system directory: {}'.format( str(parentDir) ) )
 os.chdir( fileDir )
 baseWDir = os.getcwd()
 print( 'changed current working directory: {}'.format( str(baseWDir) ) )
@@ -30,7 +34,7 @@ BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 
 vec3 = pygame.Vector3
-
+rand01 = random.random
 
 ###################################################################################################
 # write PPM file
@@ -73,14 +77,14 @@ def multiply_components(a, b):
 def random_in_unit_sphere(): 
     while True: 
         # random vector x, y, z in [-1, 1]
-        p = 2*vec3(random.random(), random.random(), random.random()) - vec3(1, 1, 1)  
+        p = 2*vec3(rand01(), rand01(), rand01()) - vec3(1, 1, 1)  
         if p.magnitude_squared() < 1: # magnitude of vector has to be less than 1 
             break
     return p
 def random_in_unit_disk(): 
     while True: 
         # random vector x, y, z in [-1, 1]
-        p = 2*vec3(random.random(), random.random(), 0) - vec3(1, 1, 0)  
+        p = 2*vec3(rand01(), rand01(), 0) - vec3(1, 1, 0)  
         if p.magnitude_squared() < 1: # magnitude of vector has to be less than 1 
             break
     return p
@@ -116,7 +120,7 @@ class Application:
         self.__init_surface(size)
         pygame.display.set_caption(caption)
         
-        # clock = pygame.time.Clock()
+        self.__clock = pygame.time.Clock()
 
     #----------------------------------------------------------------------------------------------
     # dtor
@@ -149,9 +153,11 @@ class Application:
     def run(self, render, samples_per_pixel = 100, capture_interval_s = 0):
         size = self.__surface.get_size()
         render.start(size, samples_per_pixel)
+        finished = False
         start_time = None
         capture_i = 0
         while self.__run:
+            self.__clock.tick(60)
             self.__handle_events()
             current_time = pygame.time.get_ticks()
             if start_time == None:
@@ -161,16 +167,19 @@ class Application:
             elif size != self.__surface.get_size():
                 size = self.__surface.get_size()
                 render.stop()
-                render.start(size, samples_per_pixel)
-            #clock.tick(60)
+                render.start(size, samples_per_pixel)   
             capture_frame = capture_interval_s > 0 and current_time >= start_time + capture_i * capture_interval_s * 1000
             frame_img = self.draw(render, capture_frame)
             if frame_img:
-                pygame.image.save(frame_img, "../capture/img_" + str(capture_i) + ".png")
+                pygame.image.save(frame_img, "capture/img_" + str(capture_i) + ".png")
                 capture_i += 1
+            if not finished and not render.in_progress():
+                finished = True
+                print("Render time:", (current_time-start_time)/1000, " seconds" )
+
         self.__render_image = render.copy()
-        writeFilePPM(self.__render_image, "../rendering/rt_in_ow_1")
-        pygame.image.save(self.__render_image, "../rendering/rt_in_ow_1.png")
+        writeFilePPM(self.__render_image, "rt_2")
+        pygame.image.save(self.__render_image, "rt_2.png")
 
     #----------------------------------------------------------------------------------------------
     # draw scene
@@ -220,9 +229,10 @@ class Application:
 ###################################################################################################
 # ray
 class ray:
-    def __init__(self, a, b):
+    def __init__(self, a, b, ti = 0):
         self.A = a
         self.B = b
+        self.__time = ti
     @property 
     def origin(self): 
         return self.A
@@ -235,6 +245,9 @@ class ray:
     @direction.setter
     def direction(self, d): 
         self.B = d
+    @property 
+    def time(self): 
+        return self.__time
     def point_at_parameter(self, t):
         return self.A + self.B * t
 
@@ -242,7 +255,9 @@ class ray:
 ###################################################################################################
 # camera
 class camera:
-    def __init__(self, lookfrom, lookat, vup, vfov, aspect, aperture, focus_dist):
+    def __init__(self, lookfrom, lookat, vup, vfov, aspect, aperture, focus_dist, t0=0, t1=0):
+        self.__time0 = t0
+        self.__time1 = t1
         self.__lens_radius = aperture/2
         self.__focus_dist = focus_dist
         self.__origin = lookfrom
@@ -277,9 +292,10 @@ class camera:
     def get_ray(self, s, t):
         rd = self.__lens_radius*random_in_unit_disk()
         offset = self.__u*rd.x + self.__v*rd.y # dot(rd.xy, (u, v))
+        time = self.__time0 + rand01() * (self.__time1-self.__time0)
         return ray(
             self.__origin + offset,
-            self.__lower_left_corner + s*self.__horizontal + t*self.__vertical - self.__origin - offset)
+            self.__lower_left_corner + s*self.__horizontal + t*self.__vertical - self.__origin - offset, time)
 
 
 ###################################################################################################
@@ -333,6 +349,8 @@ class sphere(hitable):
         self.__center = center
         self.__radius = radius
         self.__material = material
+    def center(self, time):
+        return self.__center
     #----------------------------------------------------------------------------------------------
     # Ray - Sphere intersection
     #
@@ -341,7 +359,8 @@ class sphere(hitable):
     # Intersection:   dot(A +B*t-C, A+B*t-C) = R*R
     #                 t*t*dot(B,B) + 2*t*dot(B,A-C) + dot(A-C,A-C) - R*R = 0
     def hit(self, r, tmin, tmax):
-        oc = r.origin - self.__center
+        cpt = self.center(r.time)
+        oc = r.origin - cpt
         a = r.direction.dot(r.direction)
         b = 2 * oc.dot(r.direction)
         c = oc.dot(oc) - self.__radius*self.__radius
@@ -350,13 +369,29 @@ class sphere(hitable):
             temp = (-b - math.sqrt(discriminant)) / (2*a)
             if tmin < temp < tmax:
                 p = r.point_at_parameter(temp) 
-                return hit_record(temp, p, (p - self.__center) / self.__radius, self.__material )
+                return hit_record(temp, p, (p - cpt) / self.__radius, self.__material )
             temp = (-b + math.sqrt(discriminant)) / a;    
             if tmin < temp < tmax:
                 p = r.point_at_parameter(temp) 
-                return hit_record(temp, p, (p - self.__center) / self.__radius, self.__material )
+                return hit_record(temp, p, (p - cpt) / self.__radius, self.__material )
         
         return None
+
+
+###################################################################################################
+# moving sphere hitable object
+class moving_sphere(sphere):
+    def __init__(self, cen0, cen1, t0, t1, radius, material):
+        super().__init__(cen0, radius, material)
+        self.__center0 = cen0
+        self.__center1 = cen1
+        self.__time0 = t0
+        self.__time1 = t1
+    def center(self, time):
+        delta_time = self.__time1-self.__time0
+        if delta_time == 0:
+            return self.__center0
+        return self.__center0 + (self.__center1-self.__center0)*(time-self.__time0)/delta_time
 
 
 ###################################################################################################
@@ -376,7 +411,7 @@ class lambertian(material):
         # target is a point outside the sphere but "near" to `rec.p`: 
         # target = p + nv + random_direction
         target = rec.p + rec.normal + random_in_unit_sphere()
-        return ray(rec.p, target-rec.p), self.__albedo
+        return ray(rec.p, target-rec.p, r_in.time), self.__albedo
     
 
 ###################################################################################################
@@ -391,7 +426,7 @@ class metal(material):
         # reflected = reflect(r_in.direction.normalize(), rec.normal)
         reflected = r_in.direction.normalize().reflect(rec.normal)
         # fuzzy
-        scattered = ray(rec.p, reflected + self.__fuzz*random_in_unit_sphere())
+        scattered = ray(rec.p, reflected + self.__fuzz*random_in_unit_sphere(), r_in.time)
         attenuation = self.__albedo
         return (scattered, attenuation) if scattered.direction.dot(rec.normal) > 0 else None
 
@@ -414,10 +449,10 @@ class dielectric(material):
             cosine = -r_in.direction.dot(rec.normal) / r_in.direction.magnitude()
         refracted = refract(r_in.direction, outward_normal, ni_over_nt)
         reflect_probe = schlick(cosine, self.__ref_idx) if refracted else 1
-        if random.random() < reflect_probe:
-            scattered = ray(rec.p, reflected)
+        if rand01() < reflect_probe:
+            scattered = ray(rec.p, reflected, r_in.time)
         else:
-            scattered = ray(rec.p, refracted)
+            scattered = ray(rec.p, refracted, r_in.time)
         return scattered, vec3(1, 1, 1)
 
 
@@ -498,7 +533,7 @@ class Rendering:
         for x, y, w, h in iter:
             col = vec3()
             for s in range(self.__ns):
-                u, v = (x + random.random())/self.__size[0], (y + random.random())/self.__size[1]
+                u, v = (x + rand01())/self.__size[0], (y + rand01())/self.__size[1]
                 r = self.__cam.get_ray(u, v)
                 col += Rendering.rToColor(r, self.__world, 0)
                 p = r.point_at_parameter(2)
@@ -534,16 +569,16 @@ def random_scene():
 
     for a in range(-11, 11):
         for b in range(-11, 11):
-            choose_mat = random.random()
-            center = vec3(a+0.9*random.random(), 0.2, b+0.9*random.random())
+            choose_mat = rand01()
+            center = vec3(a+0.9*rand01(), 0.2, b+0.9*rand01())
             if (center-vec3(4, 0.2, 0)).magnitude() > 0.9:
                 if choose_mat < 0.8:
                     # diffuse
-                    mat = lambertian(vec3(random.random()*random.random(), random.random()*random.random(), random.random()*random.random()))
-                    list.append(sphere(center, 0.2, mat))  
+                    mat = lambertian(vec3(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
+                    list.append(moving_sphere(center, center+vec3(0, 0.5*rand01(), 0), 0, 1, 0.2, mat))  
                 elif choose_mat < 0.95:
                     # metal
-                    mat = metal(vec3(0.5*(1+random.random()), 0.5*(1+random.random()), 0.5*(1+random.random())), 0.5*random.random())
+                    mat = metal(vec3(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
                     list.append(sphere(center, 0.2, mat))
                 else:
                     # glass
@@ -556,40 +591,40 @@ def random_scene():
     return list
 
 
-app = Application((600, 300), caption = "Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1)")
+app = Application((600, 300), caption = "Ray Tracing: the Next Week")
     
 size = app.size
 image = pygame.Surface(size) 
 
-create_random_scene = False
+create_random_scene = True
 if create_random_scene:
 
     lookfrom = vec3(12, 2, 3)
     lookat = vec3(0, 0.5, 0.5)
     dist_to_focus = (lookat-lookfrom).magnitude()
-    aperture = 0.1
+    aperture = 0.0
     cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
     world = random_scene()
 
 else:
 
-    lookfrom = vec3(3, 3, 2)
+    lookfrom = vec3(3, 1, 2)
     lookat = vec3(0, 0, -1)
     dist_to_focus = (lookat-lookfrom).magnitude()
-    aperture = 0.5
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+    aperture = 0.05
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
 
     world = hitable_list()
     world += [
-        sphere(vec3(0, 0, -1), 0.5,      lambertian(vec3(0.1, 0.2, 0.5))),
+        moving_sphere(vec3(-0.5, 0, -1), vec3(0.5, 0, -1), 0, 1, 0.5, lambertian(vec3(0.1, 0.2, 0.5))),
         sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
-        sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
-        sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
-        sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
+        #sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        #sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
+        #sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
     ] 
 
 render = Rendering(world, cam)
-app.run(render, 10, 0)
+app.run(render, 100, 0)
     
     
     
