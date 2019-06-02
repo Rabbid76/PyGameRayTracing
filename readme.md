@@ -42,3 +42,6 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 
 ![motion blur 1](rendering/rt_2_motion_blur_1.png)
 
+![motion blur 2](rendering/rt_2_motion_blur_2.png)
+
+![motion blur 3](rendering/rt_2_motion_blur_3.png)

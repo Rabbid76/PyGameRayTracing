@@ -4,7 +4,7 @@
 #
 # Based on:
 #  
-# "Ray Tracing: the Next Week (Ray Tracing Minibooks Book 2)
+# "Ray Tracing: the Next Week (Ray Tracing Minibooks Book 2)"
 # ASIN: B01B5AODD8
 # [https://www.amazon.com/Ray-Tracing-Weekend-Minibooks-Book-ebook/dp/B01B5AODD8]
 
@@ -381,17 +381,20 @@ class sphere(hitable):
 ###################################################################################################
 # moving sphere hitable object
 class moving_sphere(sphere):
-    def __init__(self, cen0, cen1, t0, t1, radius, material):
-        super().__init__(cen0, radius, material)
-        self.__center0 = cen0
-        self.__center1 = cen1
-        self.__time0 = t0
-        self.__time1 = t1
+    def __init__(self, centers, times, radius, material):
+        super().__init__(centers[0], radius, material)
+        self.__centers = centers
+        self.__times = times
     def center(self, time):
-        delta_time = self.__time1-self.__time0
-        if delta_time == 0:
-            return self.__center0
-        return self.__center0 + (self.__center1-self.__center0)*(time-self.__time0)/delta_time
+        if time < self.__times[0]:
+            return self.__centers[0]
+        for i, t in enumerate(self.__times):
+            if t > time:
+                delta_time = t-self.__times[i-1]
+                if delta_time == 0:
+                    return self.__centers[i]
+                return self.__centers[i-1] + (self.__centers[i]-self.__centers[i-1])*(time-self.__times[i-1])/delta_time
+        return self.__centers[-1]
 
 
 ###################################################################################################
@@ -575,7 +578,7 @@ def random_scene():
                 if choose_mat < 0.8:
                     # diffuse
                     mat = lambertian(vec3(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
-                    list.append(moving_sphere(center, center+vec3(0, 0.5*rand01(), 0), 0, 1, 0.2, mat))  
+                    list.append(moving_sphere([center, center+vec3(0, 0.5*rand01(), 0)], [0, 1], 0.2, mat))  
                 elif choose_mat < 0.95:
                     # metal
                     mat = metal(vec3(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
@@ -591,13 +594,13 @@ def random_scene():
     return list
 
 
-app = Application((600, 300), caption = "Ray Tracing: the Next Week")
+app = Application((800, 600), caption = "Ray Tracing: the Next Week")
     
 size = app.size
 image = pygame.Surface(size) 
 
-create_random_scene = True
-if create_random_scene:
+scene_id = 2
+if scene_id == 0: # random scene
 
     lookfrom = vec3(12, 2, 3)
     lookat = vec3(0, 0.5, 0.5)
@@ -606,25 +609,43 @@ if create_random_scene:
     cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
     world = random_scene()
 
-else:
+elif scene_id == 1: # defocus blur
 
-    lookfrom = vec3(3, 1, 2)
+    lookfrom = vec3(3, 3, 2)
     lookat = vec3(0, 0, -1)
     dist_to_focus = (lookat-lookfrom).magnitude()
+    aperture = 0.5
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+
+    world = hitable_list()
+    world += [
+        sphere(vec3(0, 0, -1), 0.5,      lambertian(vec3(0.1, 0.2, 0.5))),
+        sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
+        sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
+        sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
+    ] 
+
+else: # motion blur
+
+    lookfrom = vec3(4, 5, -4)
+    lookat = vec3(0, 0, 0)
+    dist_to_focus = (lookat-lookfrom).magnitude()
     aperture = 0.05
+    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
     cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
 
     world = hitable_list()
     world += [
-        moving_sphere(vec3(-0.5, 0, -1), vec3(0.5, 0, -1), 0, 1, 0.5, lambertian(vec3(0.1, 0.2, 0.5))),
-        sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
-        #sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
-        #sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
-        #sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
+        sphere(vec3(0, -100.5, 0), 100, lambertian(vec3(0.8, 0.8, 0))),
+        moving_sphere([vec3(-1.0, 0, 0.5), vec3(-0.5, 0, 0), vec3(-1.0, 0, -0.5)], [0, 0.5, 1], 0.5, lambertian(vec3(0.1, 0.2, 0.5))),
+        moving_sphere([vec3(0.5, 0, 0), vec3(0.5, 0, 0), vec3(1, 0, 0)], [0, 0.5, 1], 0.5, metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        sphere(vec3(0, 0, -1.0), 0.5,     dielectric(1.5)),
+        sphere(vec3(0, 0, -1.0), -0.45,   dielectric(1.5))
     ] 
 
 render = Rendering(world, cam)
-app.run(render, 20, 0)
+app.run(render, 100, 0)
     
     
     
