@@ -478,6 +478,42 @@ class MovingSphere(Sphere):
 
 
 ###################################################################################################
+# texture
+class Texture:
+    def __init__(self):
+        pass
+
+
+###################################################################################################
+# constant texture (color)
+class ConstantTexture(Texture):
+    def __init__(self, color):
+        super().__init__()
+        self.__color = color
+    @staticmethod
+    def create(r, g, b):
+        return ConstantTexture(vec3(r, g, b))
+    def value(self, u, v, p):
+        return self.__color
+
+
+###################################################################################################
+# constant texture (color)
+class CheckerTexture(Texture):
+    def __init__(self, even, odd):
+        super().__init__()
+        self.__even = even
+        self.__odd = odd
+    @staticmethod
+    def create(r0, g0, b0, r1, g1, b1):
+        return CheckerTexture(ConstantTexture.create(r0, g0, b0), ConstantTexture.create(r1, g1, b1))
+    def value(self, u, v, p):
+        sines = math.sin(10 * p.x) * math.sin(10 * p.y) * math.sin(10 * p.z)
+        texture = self.__odd if sines < 0 else self.__even 
+        return texture.value(0, 0, p)
+
+
+###################################################################################################
 # material
 class Material:
     def __init__(self):
@@ -489,12 +525,12 @@ class Material:
 class Lambertian(Material):
     def __init__(self, albedo):
         super().__init__()
-        self.__albedo = albedo
+        self.__albedo = albedo if albedo != None else ConstantTexture.create(0, 0, 0)
     def scatter(self, r_in, rec):
         # target is a point outside the sphere but "near" to `rec.p`: 
         # target = p + nv + random_direction
         target = rec.p + rec.normal + random_in_unit_sphere()
-        return Ray(rec.p, target-rec.p, r_in.time), self.__albedo
+        return Ray(rec.p, target-rec.p, r_in.time), self.__albedo.value(0, 0, rec.p)
     
 
 ###################################################################################################
@@ -502,7 +538,7 @@ class Lambertian(Material):
 class Metal(Material):
     def __init__(self, albedo, fuzz=0):
         super().__init__()
-        self.__albedo = albedo
+        self.__albedo = albedo if albedo != None else ConstantTexture.create(0, 0, 0)
         self.__fuzz = min(fuzz, 1)
     def scatter(self, r_in, rec):
         # reflection
@@ -510,7 +546,7 @@ class Metal(Material):
         reflected = r_in.direction.normalize().reflect(rec.normal)
         # fuzzy
         scattered = Ray(rec.p, reflected + self.__fuzz*random_in_unit_sphere(), r_in.time)
-        attenuation = self.__albedo
+        attenuation = self.__albedo.value(0, 0, rec.p)
         return (scattered, attenuation) if scattered.direction.dot(rec.normal) > 0 else None
 
 
@@ -670,7 +706,7 @@ class Rendering:
 
 def random_scene(time0, time1):
     objlist = []
-    objlist.append(Sphere(vec3(0, -1000, 0), 1000, Lambertian(vec3(0.5, 0.5, 0.5))))
+    objlist.append(Sphere(vec3(0, -1000, 0), 1000, Lambertian(CheckerTexture.create(0.2, 0.3, 0.1, 0.9, 0.9, 0.9))))
 
     for a in range(-11, 11):
         for b in range(-11, 11):
@@ -679,14 +715,14 @@ def random_scene(time0, time1):
             if (center-vec3(4, 0.2, 0)).magnitude() > 0.9:
                 if choose_mat < 0.8:
                     # diffuse
-                    mat = Lambertian(vec3(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
+                    mat = Lambertian(ConstantTexture.create(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
                     if time0 != time1:
                         objlist.append(MovingSphere([center, center+vec3(0, 0.5*rand01(), 0)], [0, 1], 0.2, mat))  
                     else:
                         objlist.append(Sphere(center, 0.2, mat))  
                 elif choose_mat < 0.95:
                     # metal
-                    mat = Metal(vec3(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
+                    mat = Metal(ConstantTexture.create(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
                     objlist.append(Sphere(center, 0.2, mat))
                 else:
                     # glass
@@ -694,17 +730,18 @@ def random_scene(time0, time1):
                     objlist.append(Sphere(center, 0.2, mat))
 
     objlist.append(Sphere(vec3(0, 1, 0), 1, Dielectric(1.5)))
-    objlist.append(Sphere(vec3(-4, 1, 0), 1, Lambertian(vec3(0.4, 0.2, 0.1))))
-    objlist.append(Sphere(vec3(4, 1, 0), 1, Metal(vec3(0.7, 0.6, 0.5), 0.0)))
+    objlist.append(Sphere(vec3(-4, 1, 0), 1, Lambertian(ConstantTexture.create(0.4, 0.2, 0.1))))
+    objlist.append(Sphere(vec3(4, 1, 0), 1, Metal(ConstantTexture.create(0.7, 0.6, 0.5), 0.0)))
     world = BHVNode(objlist, time0, time1)
     return world
 
-app = Application((600, 400), caption = "Ray Tracing: the Next Week")
-
+app = Application((300, 200), caption = "Ray Tracing: the Next Week")
+    
 size = app.size
 image = pygame.Surface(size) 
 
-scene_id = 2
+scene_id = 3
+time0, time1 = 0, 0
 if scene_id == 0: # random scene
 
     lookfrom = vec3(12, 2, 3)
@@ -712,7 +749,6 @@ if scene_id == 0: # random scene
     dist_to_focus = 10
     #dist_to_focus = (lookat-lookfrom).magnitude()
     aperture = 0.1
-    time0, time1 = 0, 1
     cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
     world = random_scene(time0, time1)
 
@@ -725,17 +761,16 @@ elif scene_id == 1: # defocus blur
     cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
 
     objlist = [
-        Sphere(vec3(0, 0, -1), 0.5,      Lambertian(vec3(0.1, 0.2, 0.5))),
-        Sphere(vec3(0, -100.5, -1), 100, Lambertian(vec3(0.8, 0.8, 0))),
-        Sphere(vec3(1, 0, -1), 0.5,      Metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        Sphere(vec3(0, 0, -1), 0.5,      Lambertian(ConstantTexture.create(0.1, 0.2, 0.5))),
+        Sphere(vec3(0, -100.5, -1), 100, Lambertian(ConstantTexture.create(0.8, 0.8, 0))),
+        Sphere(vec3(1, 0, -1), 0.5,      Metal(ConstantTexture.create(0.8, 0.6, 0.2), 0.2)),
         Sphere(vec3(-1, 0, -1), 0.5,     Dielectric(1.5)),
         Sphere(vec3(-1, 0, -1), -0.45,   Dielectric(1.5))
     ] 
     world = BHVNode(objlist, 0, 0)
 
-else: # motion blur
+elif scene_id == 2: # motion blur
 
-    time0, time1 = 0, 1
     lookfrom = vec3(4, 5, -4)
     lookat = vec3(0, 0, 0)
     dist_to_focus = (lookat-lookfrom).magnitude()
@@ -743,11 +778,26 @@ else: # motion blur
     cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
     
     objlist = [
-        Sphere(vec3(0, -100.5, 0), 100, Lambertian(vec3(0.8, 0.8, 0))),
-        MovingSphere([vec3(-1.0, 0, 0.5), vec3(-0.5, 0, 0), vec3(-1.0, 0, -0.5)], [0, 0.5, 1], 0.5, Lambertian(vec3(0.1, 0.2, 0.5))),
-        MovingSphere([vec3(0.5, 0, 0), vec3(0.5, 0, 0), vec3(1, 0, 0)], [0, 0.5, 1], 0.5, Metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        Sphere(vec3(0, -100.5, 0), 100, Lambertian(ConstantTexture.create(0.8, 0.8, 0))),
+        MovingSphere([vec3(-1.0, 0, 0.5), vec3(-0.5, 0, 0), vec3(-1.0, 0, -0.5)], [0, 0.5, 1], 0.5, Lambertian(ConstantTexture.create(0.1, 0.2, 0.5))),
+        MovingSphere([vec3(0.5, 0, 0), vec3(0.5, 0, 0), vec3(1, 0, 0)], [0, 0.5, 1], 0.5, Metal(ConstantTexture.create(0.8, 0.6, 0.2), 0.2)),
         Sphere(vec3(0, 0, -1.0), 0.5,     Dielectric(1.5)),
         Sphere(vec3(0, 0, -1.0), -0.45,   Dielectric(1.5))
+    ] 
+    world = BHVNode(objlist, time0, time1)
+
+else: # textures
+
+    lookfrom = vec3(13, 2, 3)
+    lookat = vec3(0, 0, 0)
+    dist_to_focus = 10
+    aperture = 0
+    cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
+    
+    checker_texture = CheckerTexture.create(0.2, 0.3, 0.1, 0.9, 0.9, 0.9)
+    objlist = [
+        Sphere(vec3(0, -10, 0), 10, Lambertian(checker_texture)),
+        Sphere(vec3(0, 10, 0), 10, Lambertian(checker_texture))
     ] 
     world = BHVNode(objlist, time0, time1)
 

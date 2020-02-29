@@ -2,17 +2,17 @@
 
 <!-- TOC -->
 
-- [PyGame Ray tracing](#pygame-ray-tracing)
+- [PyGame Ray Tracing](#pygame-ray-tracing)
   - [Ray Tracing in One Weekend](#ray-tracing-in-one-weekend)
     - [Materials: Diffuse, Metal, Dielectrics](#materials-diffuse-metal-dielectrics)
     - [Defocus Blur](#defocus-blur)
-    - [Final rendering](#final-rendering)
+    - [Cover scene](#cover-scene)
   - [Ray Tracing: the Next Week](#ray-tracing-the-next-week)
     - [Motion Blur](#motion-blur)
 
 <!-- /TOC -->
 
-# PyGame Ray tracing
+# PyGame Ray Tracing
 
 Based on [Peter Shirley's](https://research.nvidia.com/person/peter-shirley) books: 
 - ["Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1)"](https://www.goodreads.com/book/show/28794030-ray-tracing-in-one-weekend)
@@ -30,7 +30,7 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 
 ![defocus blur](rendering/rt_1_defocus_blur.png)
 
-### Final rendering
+### Cover scene
 
 ![rendering process](rendering/rt_1_capture_1.gif)
 
@@ -45,3 +45,8 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 ![motion blur 2](rendering/rt_2_motion_blur_2.png)
 
 ![motion blur 3](rendering/rt_2_motion_blur_3.png)
+
+---
+
+Recommended
+- [Ray Tracing in C#](https://github.com/Rabbid76/c_sharp_raytrace_examples)
