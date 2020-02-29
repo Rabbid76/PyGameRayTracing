@@ -59,16 +59,16 @@ def fToColor(c):
     # gc = c; 
     gc = (math.sqrt(c[0]), math.sqrt(c[1]), math.sqrt(c[2])) # gamma 2
     return (int(gc[0]*255.5), int(gc[1]*255.5), int(gc[2]*255.5))
-def surfaceSetXYi(s, x, y, w, h, c):
+def surfaceSetXYWHi(s, x, y, w, h, c):
     if c[0] > 255 or c[1] > 255 or c[2] > 255:
-        print(c)
         c = (max(0, min(255, c[0])), max(0, min(255, c[1])), max(0, min(255, c[2])))
     if w > 1 or h > 1: 
         s.fill(c, (x, s.get_height()-y-h, w, h))
     else:
         s.set_at((x, s.get_height()-y-1), c)
-def surfaceSetXYf(s, x, y, w, h, c):
-    surfaceSetXYi(s, x, y, w, h, fToColor(c))
+def surfaceSetXYWHf(s, x, y, w, h, c):
+    surfaceSetXYWHi(s, x, y, w, h, fToColor(c))
+
 
 ###################################################################################################
 # vector generation and operation functions
@@ -149,10 +149,10 @@ class Application:
         self.__image = image
 
     #----------------------------------------------------------------------------------------------
-    # main loop of the application in 
-    def run(self, render, samples_per_pixel = 100, capture_interval_s = 0):
+    # main loop of the application 
+    def run(self, render, samples_per_pixel = 100, samples_update_rate = 1, capture_interval_s = 0):
         size = self.__surface.get_size()
-        render.start(size, samples_per_pixel)
+        render.start(size, samples_per_pixel, samples_update_rate)
         finished = False
         start_time = None
         capture_i = 0
@@ -167,7 +167,7 @@ class Application:
             elif size != self.__surface.get_size():
                 size = self.__surface.get_size()
                 render.stop()
-                render.start(size, samples_per_pixel)   
+                render.start(size, samples_per_pixel, samples_update_rate)   
             capture_frame = capture_interval_s > 0 and current_time >= start_time + capture_i * capture_interval_s * 1000
             frame_img = self.draw(render, capture_frame)
             if frame_img:
@@ -175,7 +175,7 @@ class Application:
                 capture_i += 1
             if not finished and not render.in_progress():
                 finished = True
-                print("Render time:", (current_time-start_time)/1000, " seconds" )
+                print("Render time:", (current_time-start_time)/1000, " seconds")
 
         self.__render_image = render.copy()
         writeFilePPM(self.__render_image, "rt_2")
@@ -228,7 +228,7 @@ class Application:
 
 ###################################################################################################
 # ray
-class ray:
+class Ray:
     def __init__(self, a, b, ti = 0):
         self.A = a
         self.B = b
@@ -253,8 +253,37 @@ class ray:
 
 
 ###################################################################################################
+# axis aligned bounding box
+class AABB:
+    def __init__(self, a, b):
+        self.__min = vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z))
+        self.__max = vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z))
+    @property 
+    def min(self): 
+        return self.__min
+    @property 
+    def max(self): 
+        return self.__max
+    def __or__(self, box1):
+        box0 = self
+        small = vec3(min(box0.min[0], box1.min[0]), min(box0.min[1], box1.min[1]), min(box0.min[2], box1.min[2]))
+        big = vec3(max(box0.max[0], box1.max[0]), max(box0.max[1], box1.max[1]), max(box0.max[2], box1.max[2]))
+        return AABB(small, big)
+    def hit(self, r, tmin, tmax):
+        for a in range(3):
+            if r.direction[a] != 0:
+                t0 = min((self.__min[a]-r.origin[a])/r.direction[a], (self.__max[a]-r.origin[a])/r.direction[a])
+                t1 = max((self.__min[a]-r.origin[a])/r.direction[a], (self.__max[a]-r.origin[a])/r.direction[a])
+                ttmin = max(t0, tmin)
+                ttmax = min(t1, tmax)
+                if ttmax < ttmin:
+                    return False
+        return True
+        
+
+###################################################################################################
 # camera
-class camera:
+class Camera:
     def __init__(self, lookfrom, lookat, vup, vfov, aspect, aperture, focus_dist, t0=0, t1=0):
         self.__time0 = t0
         self.__time1 = t1
@@ -293,14 +322,14 @@ class camera:
         rd = self.__lens_radius*random_in_unit_disk()
         offset = self.__u*rd.x + self.__v*rd.y # dot(rd.xy, (u, v))
         time = self.__time0 + rand01() * (self.__time1-self.__time0)
-        return ray(
+        return Ray(
             self.__origin + offset,
             self.__lower_left_corner + s*self.__horizontal + t*self.__vertical - self.__origin - offset, time)
 
 
 ###################################################################################################
 # hit information
-class hit_record:
+class HitRecord:
     def __init__(self, t, p, normal, material):
         self.t = t
         self.p = p
@@ -310,14 +339,14 @@ class hit_record:
 
 ###################################################################################################
 # ray tracing object
-class hitable:
+class Hitable:
     def __init__(self):
         pass
 
 
 ###################################################################################################
 # list of hitable objects
-class hitable_list(hitable):
+class HitableList(Hitable):
     def __init__(self):
         super().__init__()
         self.__list = []
@@ -332,6 +361,17 @@ class hitable_list(hitable):
             self.__list.extend(hitobj)
         else:
             self.__list.append(hitobj)
+    def bounding_box(self, t0, t1):
+        if not self.__list:
+            return None
+        box = self.__list[0].bounding_box(t0, t1)
+        if not box or len(self.__list) == 1:
+            return box
+        for i in range(1, len(self.__list)):
+            box = box or self.__list[i].bounding_box(t0, t1)
+            if not box:
+                return box
+        return box
     def hit(self, r, tmin, tmax):
         hit_anything, closest_so_far = None, tmax
         for hitobj in self.__list:
@@ -339,18 +379,52 @@ class hitable_list(hitable):
             if rec:
                 hit_anything, closest_so_far = rec, rec.t
         return hit_anything
+        
+
+###################################################################################################
+# Bonding Volume Hierarchy Node
+class BHVNode:
+    def __init__(self, hitobj, t0, t1):
+        super().__init__()
+        objlist = hitobj if type(hitobj)==list else [hitobj]
+        if len(objlist) == 1:
+            self.__left = self.__right = None
+            self.__box = self.__left.bounding_box(self, t0, t1)
+            return   
+        axis = random.randrange(0, 3)          
+        objlist.sort(key = lambda obj : obj.bounding_box(t0, t1).min[axis])
+        half = len(objlist) - len(objlist) // 2
+        self.__left = BHVNode(objlist[:half], t0, t1) if half != 1 else objlist[0]
+        self.__right = BHVNode(objlist[half:], t0, t1) if half != len(objlist)-1 else objlist[-1]
+        self.__box = self.__left.bounding_box(t0, t1) or self.__right.bounding_box(t0, t1)
+    def bounding_box(self, t0, t1):
+        return self.__box
+    def hit(self, r, tmin, tmax):
+        if not self.__box.hit(r, tmin, tmax):
+            return None
+        hit_left = self.__left.hit(r, tmin, tmax)
+        hit_right = self.__right.hit(r, tmin, tmax)
+        if hit_left and hit_right:
+            return hit_left if hit_left.t < hit_right.t else hit_right 
+        if hit_left:
+            return hit_left
+        if hit_right:
+            return hit_right
+        return None
 
 
 ###################################################################################################
 # sphere hitable object
-class sphere(hitable):
+class Sphere(Hitable):
     def __init__(self, center, radius, material):
         super().__init__()
         self.__center = center
-        self.__radius = radius
+        self._radius = radius
         self.__material = material
     def center(self, time):
         return self.__center
+    def bounding_box(self, t0, t1):
+        return AABB(self.__center-vec3(self._radius, self._radius, self._radius), self.__center+vec3(self._radius, self._radius, self._radius))
     #----------------------------------------------------------------------------------------------
     # Ray - Sphere intersection
     #
@@ -363,24 +437,24 @@ class sphere(hitable):
         oc = r.origin - cpt
         a = r.direction.dot(r.direction)
         b = 2 * oc.dot(r.direction)
-        c = oc.dot(oc) - self.__radius*self.__radius
+        c = oc.dot(oc) - self._radius*self._radius
         discriminant = b*b - 4*a*c
         if discriminant > 0:
             temp = (-b - math.sqrt(discriminant)) / (2*a)
             if tmin < temp < tmax:
                 p = r.point_at_parameter(temp) 
-                return hit_record(temp, p, (p - cpt) / self.__radius, self.__material )
-            temp = (-b + math.sqrt(discriminant)) / a;    
+                return HitRecord(temp, p, (p - cpt) / self._radius, self.__material)
+            temp = (-b + math.sqrt(discriminant)) / (2*a)
             if tmin < temp < tmax:
                 p = r.point_at_parameter(temp) 
-                return hit_record(temp, p, (p - cpt) / self.__radius, self.__material )
+                return HitRecord(temp, p, (p - cpt) / self._radius, self.__material)
         
         return None
 
 
 ###################################################################################################
 # moving sphere hitable object
-class moving_sphere(sphere):
+class MovingSphere(Sphere):
     def __init__(self, centers, times, radius, material):
         super().__init__(centers[0], radius, material)
         self.__centers = centers
@@ -395,18 +469,24 @@ class moving_sphere(sphere):
                     return self.__centers[i]
                 return self.__centers[i-1] + (self.__centers[i]-self.__centers[i-1])*(time-self.__times[i-1])/delta_time
         return self.__centers[-1]
+    def bounding_box(self, t0, t1):
+        small = vec3(min([c[0] for c in self.__centers]), min([c[1] for c in self.__centers]), min([c[2] for c in self.__centers]))
+        small -= vec3(self._radius, self._radius, self._radius)
+        big = vec3(max([c[0] for c in self.__centers]), max([c[1] for c in self.__centers]), max([c[2] for c in self.__centers]))
+        big += vec3(self._radius, self._radius, self._radius)
+        return AABB(small, big)
 
 
 ###################################################################################################
 # material
-class material:
+class Material:
     def __init__(self):
         pass
 
 
 ###################################################################################################
 # lambertian material
-class lambertian(material):
+class Lambertian(Material):
     def __init__(self, albedo):
         super().__init__()
         self.__albedo = albedo
@@ -414,12 +494,12 @@ class lambertian(material):
         # target is a point outside the sphere but "near" to `rec.p`: 
         # target = p + nv + random_direction
         target = rec.p + rec.normal + random_in_unit_sphere()
-        return ray(rec.p, target-rec.p, r_in.time), self.__albedo
+        return Ray(rec.p, target-rec.p, r_in.time), self.__albedo
     
 
 ###################################################################################################
 # metal material
-class metal(material):
+class Metal(Material):
     def __init__(self, albedo, fuzz=0):
         super().__init__()
         self.__albedo = albedo
@@ -429,14 +509,14 @@ class metal(material):
         # reflected = reflect(r_in.direction.normalize(), rec.normal)
         reflected = r_in.direction.normalize().reflect(rec.normal)
         # fuzzy
-        scattered = ray(rec.p, reflected + self.__fuzz*random_in_unit_sphere(), r_in.time)
+        scattered = Ray(rec.p, reflected + self.__fuzz*random_in_unit_sphere(), r_in.time)
         attenuation = self.__albedo
         return (scattered, attenuation) if scattered.direction.dot(rec.normal) > 0 else None
 
 
 ###################################################################################################
 # dielectric material
-class dielectric(material):
+class Dielectric(Material):
     def __init__(self, ri):
         super().__init__()
         self.__ref_idx = ri
@@ -453,9 +533,9 @@ class dielectric(material):
         refracted = refract(r_in.direction, outward_normal, ni_over_nt)
         reflect_probe = schlick(cosine, self.__ref_idx) if refracted else 1
         if rand01() < reflect_probe:
-            scattered = ray(rec.p, reflected, r_in.time)
+            scattered = Ray(rec.p, reflected, r_in.time)
         else:
-            scattered = ray(rec.p, refracted, r_in.time)
+            scattered = Ray(rec.p, refracted, r_in.time)
         return scattered, vec3(1, 1, 1)
 
 
@@ -466,11 +546,13 @@ class Rendering:
         self.__world = world
         self.__cam = cam
     #----------------------------------------------------------------------------------------------
-    def start(self, size, ns):
+    def start(self, size, no_sample, update_rate):
         self.__size = size
         self.__cam.aspect = self.__size[0]/self.__size[1]
-        self.__ns = ns
+        self.__no_samples = no_sample
+        self.__update_rate = update_rate
         self.__pixel_count = 0
+        self.__progress = 0
         self.__image = pygame.Surface(self.__size)
         self._stopped = False
         self.__thread = threading.Thread(target = self.run)
@@ -496,7 +578,7 @@ class Rendering:
     def blit(self, surface, pos):
         self.__thread_lock.acquire()
         surface.blit(self.__image, pos) 
-        progress = self.__pixel_count / self.__size[0] / self.__size[1]
+        progress = self.__progress
         self.__thread_lock.release() 
         return progress
     #---------------------------------------------------------------------------------------------- 
@@ -532,19 +614,39 @@ class Rendering:
             tile_size >>= 1
     #----------------------------------------------------------------------------------------------
     def run(self):
-        iter = self.coord_iterator()  
-        for x, y, w, h in iter:
-            col = vec3()
-            for s in range(self.__ns):
-                u, v = (x + rand01())/self.__size[0], (y + rand01())/self.__size[1]
-                r = self.__cam.get_ray(u, v)
-                col += Rendering.rToColor(r, self.__world, 0)
-                p = r.point_at_parameter(2)
-            self.__thread_lock.acquire()
-            surfaceSetXYf(self.__image, x, y, w, h, col / self.__ns)
-            self.__thread_lock.release()
-            if self._stopped:
-                break
+        no_samples = self.__no_samples
+        no_samples_outer = max(1, int(no_samples * self.__update_rate + 0.5))
+        no_samples_inner = (no_samples + no_samples_outer - 1) // no_samples_outer
+        outer_i = 0
+        count = 0
+        colarr = [0] * (self.__size[0] * self.__size[1] * 3)
+        while outer_i * no_samples_inner < no_samples:
+            iter = self.coord_iterator() 
+            for x, y, w, h in iter:
+                no_start = no_samples_inner * outer_i
+                no_end = min(no_samples, no_start + no_samples_inner)
+                col = vec3()
+                for s in range(no_start, no_end):
+                    u, v = (x + rand01())/self.__size[0], (y + rand01())/self.__size[1]
+                    r = self.__cam.get_ray(u, v)
+                    col += Rendering.rToColor(r, self.__world, 0)
+                arri = y * self.__size[0] * 3 + x * 3
+                colarr[arri+0] += col[0] 
+                colarr[arri+1] += col[1]
+                colarr[arri+2] += col[2] 
+                col = vec3(colarr[arri+0], colarr[arri+1], colarr[arri+2])    
+
+                self.__thread_lock.acquire()
+                if no_start == 0:
+                    surfaceSetXYWHf(self.__image, x, y, w, h, col / no_end)
+                else:
+                    surfaceSetXYWHf(self.__image, x, y, 1, 1, col / no_end)
+                self.__thread_lock.release()
+                count += 1
+                self.__progress = count / (no_samples * self.__size[0] * self.__size[1])
+                if self._stopped:
+                    break
+            outer_i += 1
     #----------------------------------------------------------------------------------------------
     max_dist = 1e20
     @staticmethod
@@ -566,9 +668,9 @@ class Rendering:
 ###################################################################################################
 # main
 
-def random_scene():
-    list = hitable_list()
-    list.append(sphere(vec3(0, -1000, 0), 1000, lambertian(vec3(0.5, 0.5, 0.5))))
+def random_scene(time0, time1):
+    objlist = []
+    objlist.append(Sphere(vec3(0, -1000, 0), 1000, Lambertian(vec3(0.5, 0.5, 0.5))))
 
     for a in range(-11, 11):
         for b in range(-11, 11):
@@ -577,25 +679,28 @@ def random_scene():
             if (center-vec3(4, 0.2, 0)).magnitude() > 0.9:
                 if choose_mat < 0.8:
                     # diffuse
-                    mat = lambertian(vec3(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
-                    list.append(moving_sphere([center, center+vec3(0, 0.5*rand01(), 0)], [0, 1], 0.2, mat))  
+                    mat = Lambertian(vec3(rand01()*rand01(), rand01()*rand01(), rand01()*rand01()))
+                    if time0 != time1:
+                        objlist.append(MovingSphere([center, center+vec3(0, 0.5*rand01(), 0)], [0, 1], 0.2, mat))  
+                    else:
+                        objlist.append(Sphere(center, 0.2, mat))  
                 elif choose_mat < 0.95:
                     # metal
-                    mat = metal(vec3(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
-                    list.append(sphere(center, 0.2, mat))
+                    mat = Metal(vec3(0.5*(1+rand01()), 0.5*(1+rand01()), 0.5*(1+rand01())), 0.5*rand01())
+                    objlist.append(Sphere(center, 0.2, mat))
                 else:
                     # glass
-                    mat = dielectric(1.5)
-                    list.append(sphere(center, 0.2, mat))
+                    mat = Dielectric(1.5)
+                    objlist.append(Sphere(center, 0.2, mat))
 
-    list.append(sphere(vec3(0, 1, 0), 1, dielectric(1.5)))
-    list.append(sphere(vec3(-4, 1, 0), 1, lambertian(vec3(0.4, 0.2, 0.1))))
-    list.append(sphere(vec3(4, 1, 0), 1, metal(vec3(0.7, 0.6, 0.5), 0.0)))
-    return list
+    objlist.append(Sphere(vec3(0, 1, 0), 1, Dielectric(1.5)))
+    objlist.append(Sphere(vec3(-4, 1, 0), 1, Lambertian(vec3(0.4, 0.2, 0.1))))
+    objlist.append(Sphere(vec3(4, 1, 0), 1, Metal(vec3(0.7, 0.6, 0.5), 0.0)))
+    world = BHVNode(objlist, time0, time1)
+    return world
 
+app = Application((600, 400), caption = "Ray Tracing: the Next Week")
 
-app = Application((800, 600), caption = "Ray Tracing: the Next Week")
-    
 size = app.size
 image = pygame.Surface(size) 
 
@@ -603,11 +708,13 @@ scene_id = 2
 if scene_id == 0: # random scene
 
     lookfrom = vec3(12, 2, 3)
-    lookat = vec3(0, 0.5, 0.5)
-    dist_to_focus = (lookat-lookfrom).magnitude()
-    aperture = 0.0
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
-    world = random_scene()
+    lookat = vec3(0, 0, 0)
+    dist_to_focus = 10
+    #dist_to_focus = (lookat-lookfrom).magnitude()
+    aperture = 0.1
+    time0, time1 = 0, 1
+    cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
+    world = random_scene(time0, time1)
 
 elif scene_id == 1: # defocus blur
 
@@ -615,37 +722,37 @@ elif scene_id == 1: # defocus blur
     lookat = vec3(0, 0, -1)
     dist_to_focus = (lookat-lookfrom).magnitude()
     aperture = 0.5
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
+    cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus)
 
-    world = hitable_list()
-    world += [
-        sphere(vec3(0, 0, -1), 0.5,      lambertian(vec3(0.1, 0.2, 0.5))),
-        sphere(vec3(0, -100.5, -1), 100, lambertian(vec3(0.8, 0.8, 0))),
-        sphere(vec3(1, 0, -1), 0.5,      metal(vec3(0.8, 0.6, 0.2), 0.2)),
-        sphere(vec3(-1, 0, -1), 0.5,     dielectric(1.5)),
-        sphere(vec3(-1, 0, -1), -0.45,   dielectric(1.5))
+    objlist = [
+        Sphere(vec3(0, 0, -1), 0.5,      Lambertian(vec3(0.1, 0.2, 0.5))),
+        Sphere(vec3(0, -100.5, -1), 100, Lambertian(vec3(0.8, 0.8, 0))),
+        Sphere(vec3(1, 0, -1), 0.5,      Metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        Sphere(vec3(-1, 0, -1), 0.5,     Dielectric(1.5)),
+        Sphere(vec3(-1, 0, -1), -0.45,   Dielectric(1.5))
     ] 
+    world = BHVNode(objlist, 0, 0)
 
 else: # motion blur
 
+    time0, time1 = 0, 1
     lookfrom = vec3(4, 5, -4)
     lookat = vec3(0, 0, 0)
     dist_to_focus = (lookat-lookfrom).magnitude()
     aperture = 0.05
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
-    cam = camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, 0, 1)
-
-    world = hitable_list()
-    world += [
-        sphere(vec3(0, -100.5, 0), 100, lambertian(vec3(0.8, 0.8, 0))),
-        moving_sphere([vec3(-1.0, 0, 0.5), vec3(-0.5, 0, 0), vec3(-1.0, 0, -0.5)], [0, 0.5, 1], 0.5, lambertian(vec3(0.1, 0.2, 0.5))),
-        moving_sphere([vec3(0.5, 0, 0), vec3(0.5, 0, 0), vec3(1, 0, 0)], [0, 0.5, 1], 0.5, metal(vec3(0.8, 0.6, 0.2), 0.2)),
-        sphere(vec3(0, 0, -1.0), 0.5,     dielectric(1.5)),
-        sphere(vec3(0, 0, -1.0), -0.45,   dielectric(1.5))
+    cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
+    
+    objlist = [
+        Sphere(vec3(0, -100.5, 0), 100, Lambertian(vec3(0.8, 0.8, 0))),
+        MovingSphere([vec3(-1.0, 0, 0.5), vec3(-0.5, 0, 0), vec3(-1.0, 0, -0.5)], [0, 0.5, 1], 0.5, Lambertian(vec3(0.1, 0.2, 0.5))),
+        MovingSphere([vec3(0.5, 0, 0), vec3(0.5, 0, 0), vec3(1, 0, 0)], [0, 0.5, 1], 0.5, Metal(vec3(0.8, 0.6, 0.2), 0.2)),
+        Sphere(vec3(0, 0, -1.0), 0.5,     Dielectric(1.5)),
+        Sphere(vec3(0, 0, -1.0), -0.45,   Dielectric(1.5))
     ] 
+    world = BHVNode(objlist, time0, time1)
 
 render = Rendering(world, cam)
-app.run(render, 100, 0)
+app.run(render, 100, 1, 0)
     
     
     
