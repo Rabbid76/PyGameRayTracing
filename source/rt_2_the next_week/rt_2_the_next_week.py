@@ -368,7 +368,7 @@ class HitableList(Hitable):
         if not box or len(self.__list) == 1:
             return box
         for i in range(1, len(self.__list)):
-            box = box or self.__list[i].bounding_box(t0, t1)
+            box = box | self.__list[i].bounding_box(t0, t1)
             if not box:
                 return box
         return box
@@ -396,7 +396,7 @@ class BHVNode:
         half = len(objlist) - len(objlist) // 2
         self.__left = BHVNode(objlist[:half], t0, t1) if half != 1 else objlist[0]
         self.__right = BHVNode(objlist[half:], t0, t1) if half != len(objlist)-1 else objlist[-1]
-        self.__box = self.__left.bounding_box(t0, t1) or self.__right.bounding_box(t0, t1)
+        self.__box = self.__left.bounding_box(t0, t1) | self.__right.bounding_box(t0, t1)
     def bounding_box(self, t0, t1):
         return self.__box
     def hit(self, r, tmin, tmax):
@@ -735,13 +735,13 @@ def random_scene(time0, time1):
     world = BHVNode(objlist, time0, time1)
     return world
 
-app = Application((300, 200), caption = "Ray Tracing: the Next Week")
+app = Application((600, 400), caption = "Ray Tracing: the Next Week")
     
 size = app.size
 image = pygame.Surface(size) 
 
-scene_id = 3
-time0, time1 = 0, 0
+scene_id = 0
+time0, time1 = 0, 1
 if scene_id == 0: # random scene
 
     lookfrom = vec3(12, 2, 3)
