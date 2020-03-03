@@ -478,6 +478,64 @@ class MovingSphere(Sphere):
 
 
 ###################################################################################################
+# noise 
+class Noise:
+    def __init__(self):
+        pass
+
+
+###################################################################################################
+# noise 
+class Perlin(Noise):
+    def __init__(self):
+        super().__init__()
+        self.__rand = Perlin.generate()
+        self.__perm = [Perlin.generate_perm() for _ in range(3)] 
+    def noise(self, p):
+        u, v, w = (p[i] - math.floor(p[i]) for i in range(3))
+        i, j, k = (int(p[a]) for a in range(3))
+        pe = self.__perm
+        c = [[[self.__rand[pe[0][(i+di) & 255] ^ pe[1][(j+dj) & 255] ^ pe[2][(k+dk) & 255]] for dk in range(2)] for dj in range(2)] for di in range(2)]
+        return Perlin.trilinear_interp(c, u, v, w)
+    def turb(self, p, depth=7):
+        accum = 0
+        temp_p = vec3(p)
+        weight = 1
+        for i in range(3):
+            accum += weight * self.noise(temp_p) 
+            weight *= 0.5
+            temp_p *= 2
+        return math.fabs(accum)
+    @staticmethod
+    def generate():
+        return [vec3(rand01(), rand01(), rand01() * 2 - 1).normalize() for _ in range(256)]
+    @staticmethod
+    def permute(p):
+        for i in range(len(p)-1, 0, -1):
+            target = int(rand01() * (i+1))
+            p[i], p[target] = p[target], p[i] 
+    @staticmethod
+    def generate_perm():
+        perm = [i for i in range(256)]
+        Perlin.permute(perm)
+        return perm
+    @staticmethod
+    def trilinear_interp(c, u, v, w):
+        uu = u * u * (3 - 2 * u)
+        vv = v * v * (3 - 2 * v)
+        ww = w * w * (3 - 2 * w)
+        accum = 0
+        for i in range(2):
+            for j in range(2):
+                for k in range(2):
+                    accum += \
+                        ((i * uu) + (1 - i) * (1 - uu)) * \
+                        ((j * vv) + (1 - j) * (1 - vv)) * \
+                        ((k * ww) + (1 - k) * (1 - ww)) * \
+                        c[i][j][k].dot(vec3(u-i, v-j, w-k))
+        return accum
+
+###################################################################################################
 # texture
 class Texture:
     def __init__(self):
@@ -498,7 +556,7 @@ class ConstantTexture(Texture):
 
 
 ###################################################################################################
-# constant texture (color)
+# checker texture
 class CheckerTexture(Texture):
     def __init__(self, even, odd):
         super().__init__()
@@ -511,6 +569,39 @@ class CheckerTexture(Texture):
         sines = math.sin(10 * p.x) * math.sin(10 * p.y) * math.sin(10 * p.z)
         texture = self.__odd if sines < 0 else self.__even 
         return texture.value(0, 0, p)
+
+
+###################################################################################################
+# noise texture
+class NoiseTexture(Texture):
+    DEFAULT = 0
+    TURB = 1
+    SIN_X = 2
+    SIN_Y = 3
+    SIN_Z = 4 
+    def __init__(self, scale, type):
+        super().__init__()
+        self.__noise = Perlin()
+        self.__scale = scale
+        self.__type = type
+    @staticmethod
+    def create(scale, type):
+        return NoiseTexture(scale, type)
+    def value(self, u, v, p):
+        noise = 0.5
+        if self.__type == NoiseTexture.DEFAULT:
+            noise = self.__noise.noise(p * self.__scale)
+        elif self.__type == NoiseTexture.TURB:
+            noise = self.__noise.turb(p * self.__scale)
+        elif self.__type == NoiseTexture.SIN_X:
+            noise = math.sin(self.__scale * p.x + 5 * self.__noise.turb(p * self.__scale))
+        elif self.__type == NoiseTexture.SIN_Y:
+            noise = math.sin(self.__scale * p.y + 5 * self.__noise.turb(p * self.__scale))
+        elif self.__type == NoiseTexture.SIN_Z:
+            noise = math.sin(self.__scale * p.z + 10 * self.__noise.turb(p * self.__scale))
+        else:
+            noise = self.__noise.noise(p * self.__scale)
+        return vec3(1, 1, 1) * (noise * 0.5 + 0.5)
 
 
 ###################################################################################################
@@ -740,7 +831,7 @@ app = Application((600, 400), caption = "Ray Tracing: the Next Week")
 size = app.size
 image = pygame.Surface(size) 
 
-scene_id = 0
+scene_id = 4
 time0, time1 = 0, 1
 if scene_id == 0: # random scene
 
@@ -786,7 +877,7 @@ elif scene_id == 2: # motion blur
     ] 
     world = BHVNode(objlist, time0, time1)
 
-else: # textures
+elif  scene_id == 3: # textures
 
     lookfrom = vec3(13, 2, 3)
     lookat = vec3(0, 0, 0)
@@ -798,6 +889,21 @@ else: # textures
     objlist = [
         Sphere(vec3(0, -10, 0), 10, Lambertian(checker_texture)),
         Sphere(vec3(0, 10, 0), 10, Lambertian(checker_texture))
+    ] 
+    world = BHVNode(objlist, time0, time1)
+
+else: # noise textures
+
+    lookfrom = vec3(13, 2, 3)
+    lookat = vec3(0, 0, 0)
+    dist_to_focus = 10
+    aperture = 0
+    cam = Camera(lookfrom, lookat, vec3(0, 1, 0), 20, size[0]/size[1], aperture, dist_to_focus, time0, time1)
+    
+    checker_texture = NoiseTexture.create(1, NoiseTexture.SIN_Z)
+    objlist = [
+        Sphere(vec3(0, -1000, 0), 1000, Lambertian(checker_texture)),
+        Sphere(vec3(0, 2, 0), 2, Lambertian(checker_texture))
     ] 
     world = BHVNode(objlist, time0, time1)
 
