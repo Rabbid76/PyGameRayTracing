@@ -49,7 +49,7 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 
 ### Noise Texture
 
-![noise texture marble](noise_texture_marble.png)
+![noise texture marble](rendering/rt_2_noise_texture_marble.png)
 
 ---
 
