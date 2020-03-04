@@ -9,6 +9,7 @@
     - [Cover scene](#cover-scene)
   - [Ray Tracing: the Next Week](#ray-tracing-the-next-week)
     - [Motion Blur](#motion-blur)
+    - [Noise Texture](#noise-texture)
 
 <!-- /TOC -->
 
@@ -45,6 +46,10 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 ![motion blur 3](rendering/rt_2_motion_blur_3.png)
 
 ![motion blur 4](rendering/rt_2_motion_blur_4.png)
+
+### Noise Texture
+
+![noise texture marble](noise_texture_marble.png)
 
 ---
 

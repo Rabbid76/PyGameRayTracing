@@ -493,7 +493,7 @@ class Perlin(Noise):
         self.__perm = [Perlin.generate_perm() for _ in range(3)] 
     def noise(self, p):
         u, v, w = (p[i] - math.floor(p[i]) for i in range(3))
-        i, j, k = (int(p[a]) for a in range(3))
+        i, j, k = (math.floor(p[a]) for a in range(3))
         pe = self.__perm
         c = [[[self.__rand[pe[0][(i+di) & 255] ^ pe[1][(j+dj) & 255] ^ pe[2][(k+dk) & 255]] for dk in range(2)] for dj in range(2)] for di in range(2)]
         return Perlin.trilinear_interp(c, u, v, w)
