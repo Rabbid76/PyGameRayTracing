@@ -1,21 +1,12 @@
 <a href="https://stackexchange.com/users/7322082/rabbid76"><img src="https://stackexchange.com/users/flair/7322082.png" width="208" height="58" alt="profile for Rabbid76 on Stack Exchange, a network of free, community-driven Q&amp;A sites" title="profile for Rabbid76 on Stack Exchange, a network of free, community-driven Q&amp;A sites" /></a>
 
-<!-- TOC -->
-
-- [PyGame Ray Tracing](#pygame-ray-tracing)
-  - [Ray Tracing in One Weekend](#ray-tracing-in-one-weekend)
-    - [Materials: Diffuse, Metal, Dielectrics](#materials-diffuse-metal-dielectrics)
-    - [Defocus Blur](#defocus-blur)
-    - [Cover scene](#cover-scene)
-  - [Ray Tracing: the Next Week](#ray-tracing-the-next-week)
-    - [Motion Blur](#motion-blur)
-    - [Noise Texture](#noise-texture)
-
-<!-- /TOC -->
-
 # PyGame Ray Tracing
 
-Based on [Peter Shirley's](https://research.nvidia.com/person/peter-shirley) books: 
+“Note that I avoid most “modern features” of C++, but inheritance and operator overloading are too useful for ray tracers to pass on.”  
+― [Peter Shirley](https://research.nvidia.com/person/peter-shirley), [Ray Tracing in One Weekend](https://www.goodreads.com/book/show/28794030-ray-tracing-in-one-weekend)
+
+Based on [Peter Shirley's](https://research.nvidia.com/person/peter-shirley) books:
+
 - ["Ray Tracing in One Weekend (Ray Tracing Minibooks Book 1)"](https://www.goodreads.com/book/show/28794030-ray-tracing-in-one-weekend)
 - ["Ray Tracing: the Next Week (Ray Tracing Minibooks Book 2)"](https://www.amazon.com/Ray-Tracing-Weekend-Minibooks-Book-ebook/dp/B01B5AODD8)
 
