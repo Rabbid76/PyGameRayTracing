@@ -46,8 +46,9 @@ Implemented in [Python 3.7](https://www.python.org/) with [PyGame](https://www.p
 
 Recommended
 
-- [Ray Tracing in C#](https://github.com/Rabbid76/c_sharp_raytrace_examples)
 - [PeterShirley/raytracing.github.io](https://github.com/RayTracing/raytracing.github.io)
 - [PeterShirley/RayTraycingInOneWeekend](https://github.com/RayTracing/InOneWeekend)
 - [PeterShirley/RayTraycingTheNextWeek](https://github.com/RayTracing/TheNextWeek)
 - [PeterShirley/RayTraycingTheRestOfYourLife](https://github.com/RayTracing/TheRestOfYourLife)
+- [Ray Tracing in rust](https://github.com/Rabbid76/ray-tracing-with-rust)
+- [Ray Tracing in C#](https://github.com/Rabbid76/c_sharp_raytrace_examples)
